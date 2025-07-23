@@ -7,17 +7,23 @@ app = FastAPI()
 
 connection = psycopg2.connect(database="postgres", user="postgres.qollpkburpqlzxkvliyu", password="Chowmein.08011968", host="aws-0-eu-west-2.pooler.supabase.com", port=5432)
 
-def execute_query(sql: str):
+def execute_query(sql: str, params=None, fetch=True):
     try:
         cursor = connection.cursor()
         print(sql)
-        cursor.execute(sql)
-
-        # Fetch all rows from database
-        record = cursor.fetchall()
-        return record
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+        if fetch:
+            record = cursor.fetchall()
+            return record
+        else:
+            connection.commit()
+            return None
     except Exception as e:
         print(e)
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if cursor:
             cursor.close()
@@ -65,30 +71,15 @@ def add_customer(customer: CustomerCreate):
         VALUES (%s, %s, %s, %s, %s)
         RETURNING customer_id, customer_name, email, phone_number, address_line_1, city
     """
-    try:
-        cursor = connection.cursor()
-        cursor.execute(sql, (
-            customer.customer_name,
-            customer.email,
-            customer.phone_number,
-            customer.address_line_1,
-            customer.city
-        ))
-        connection.commit()
-        new_customer = cursor.fetchone()
-        return {
-            "customer_id": new_customer[0],
-            "customer_name": new_customer[1],
-            "email": new_customer[2],
-            "phone_number": new_customer[3],
-            "address_line_1": new_customer[4],
-            "city": new_customer[5],
-        }
-    except Exception as e:
-        print(e)
-        return {"error": str(e)}
-    finally:
-        cursor.close()
+    params = (
+        customer.customer_name,
+        customer.email,
+        customer.phone_number,
+        customer.address_line_1,
+        customer.city
+    )
+    data = execute_query(sql, params)
+    return data[0]
 
 def update_single_customer(customer_id: int, customer: CustomerCreate):
     check_sql = "SELECT * FROM customerorders.customer WHERE customer_id = '{customer_id}'"
@@ -102,7 +93,15 @@ def update_single_customer(customer_id: int, customer: CustomerCreate):
         WHERE customer_id = '{customer_id}'
         RETURNING customer_id, customer_name, email, phone_number, address_line_1, city
     """
-    data = execute_query(update_sql)
+    params = (
+        customer.customer_name,
+        customer.email,
+        customer.phone_number,
+        customer.address_line_1,
+        customer.city,
+        customer_id
+    )
+    data = execute_query(update_sql, params)
     return data[0] if data else {"error": "Update failed"}
 
 @app.get("/")
